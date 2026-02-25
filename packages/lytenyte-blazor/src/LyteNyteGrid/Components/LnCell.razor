@@ -1,0 +1,143 @@
+@namespace LyteNyteGrid.Components
+@typeparam T
+
+@{
+    var isEditing = State.ActiveEdit is var (editColId, editRowIdx)
+        && editColId == Column.Id && editRowIdx == RowIndex;
+}
+
+<div class="ln-cell @Column.CellClass @GetPinClass() @(State.Styles?.Cell?.ClassName)"
+     style="@GetCellStyle()"
+     role="gridcell"
+     data-col-index="@ColIndex"
+     data-row-index="@RowIndex"
+     @onclick="HandleCellClick"
+     @ondblclick="HandleCellDoubleClick">
+
+    @if (isEditing && Column.EditTemplate is not null)
+    {
+        @Column.EditTemplate(new EditContext<T>
+        {
+            Row = Row,
+            Column = Column,
+            RowIndex = RowIndex,
+            ColIndex = ColIndex,
+            Api = State,
+            EditValue = State.EditValue,
+            ChangeValue = (v) => { State.EditValue = v; State.NotifyStateChanged(); },
+            Commit = () => State.EditEnd(false),
+            Cancel = () => State.EditEnd(true),
+        })
+    }
+    else if (isEditing)
+    {
+        <input class="ln-cell-edit-input"
+               value="@(State.EditValue?.ToString() ?? "")"
+               @oninput="HandleEditInput"
+               @onkeydown="HandleEditKeyDown" />
+    }
+    else if (Column.CellTemplate is not null)
+    {
+        @Column.CellTemplate(new CellRendererContext<T>
+        {
+            Row = Row,
+            Column = Column,
+            RowIndex = RowIndex,
+            ColIndex = ColIndex,
+            Api = State,
+            Value = Value,
+            Selected = State.GetSelectionState().IsSelected(Row.Id),
+            DetailExpanded = State.DetailExpansions.Contains(Row.Id),
+        })
+    }
+    else if (Row is RowGroup group && ColIndex == 0)
+    {
+        <span class="ln-group-indent" style="@GetGroupIndentStyle(group)"></span>
+        <button class="ln-group-toggle" @onclick="() => State.RowGroupToggle(Row.Id)" @onclick:stopPropagation="true">
+            @(State.RowIsExpanded(Row) ? "▼" : "▶")
+        </button>
+        <span class="ln-group-value">@(group.Key ?? "(null)")</span>
+    }
+    else
+    {
+        <span class="ln-cell-text">@(Value?.ToString() ?? "")</span>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public GridState<T> State { get; set; } = null!;
+    [Parameter] public required RowNode Row { get; set; }
+    [Parameter] public required ColumnDefinition<T> Column { get; set; }
+    [Parameter] public int RowIndex { get; set; }
+    [Parameter] public int ColIndex { get; set; }
+
+    private object? Value => Column.GetValueFromNode(Row);
+
+    private string GetCellStyle()
+    {
+        var style = $"grid-column:{ColIndex + 1};";
+
+        // Handle column spanning
+        var colSpan = Column.ColSpanFn is not null
+            ? Column.ColSpanFn(new CellContext<T> { Row = Row, Column = Column, RowIndex = RowIndex, ColIndex = ColIndex, Api = State })
+            : Column.ColSpan;
+        if (colSpan > 1)
+            style += $"grid-column:{ColIndex + 1} / span {colSpan};";
+
+        // Pinned column positioning
+        if (Column.Pin == Enums.ColumnPin.Start && ColIndex < State.XPositions.Length)
+            style += $"position:sticky;{(State.Rtl ? "right" : "left")}:{State.XPositions[ColIndex]}px;z-index:1;";
+        else if (Column.Pin == Enums.ColumnPin.End)
+            style += "position:sticky;z-index:1;";
+
+        if (Column.CellStyle is not null)
+            style += Column.CellStyle;
+        if (State.Styles?.Cell?.Style is not null)
+            style += State.Styles.Cell.Style;
+
+        return style;
+    }
+
+    private string GetPinClass() => Column.Pin switch
+    {
+        Enums.ColumnPin.Start => "ln-pin-start",
+        Enums.ColumnPin.End => "ln-pin-end",
+        _ => ""
+    };
+
+    private string GetGroupIndentStyle(RowGroup group)
+    {
+        return $"width:{group.Depth * 24}px;display:inline-block;";
+    }
+
+    private void HandleCellClick()
+    {
+        if (State.EditMode != Enums.EditMode.ReadOnly &&
+            State.EditClickActivator == Enums.EditClickActivator.SingleClick)
+        {
+            State.EditBegin(Column.Id, RowIndex);
+        }
+    }
+
+    private void HandleCellDoubleClick()
+    {
+        if (State.EditMode != Enums.EditMode.ReadOnly &&
+            State.EditClickActivator == Enums.EditClickActivator.DoubleClick)
+        {
+            State.EditBegin(Column.Id, RowIndex);
+        }
+    }
+
+    private void HandleEditInput(ChangeEventArgs e)
+    {
+        State.EditValue = e.Value;
+    }
+
+    private void HandleEditKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            State.EditEnd(false);
+        else if (e.Key == "Escape")
+            State.EditEnd(true);
+    }
+}

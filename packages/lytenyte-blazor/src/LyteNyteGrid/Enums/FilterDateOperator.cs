@@ -1,0 +1,36 @@
+namespace LyteNyteGrid.Enums;
+
+public enum FilterDateOperator
+{
+    Equals,
+    NotEquals,
+    Before,
+    BeforeOrEquals,
+    After,
+    AfterOrEquals,
+    YearToDate,
+    ThisWeek,
+    ThisMonth,
+    ThisYear,
+    LastWeek,
+    LastMonth,
+    LastYear,
+    NextWeek,
+    NextMonth,
+    NextYear,
+    Today,
+    Tomorrow,
+    Yesterday,
+    WeekOfYear,
+    QuarterOfYear,
+    IsWeekend,
+    IsWeekday,
+    NDaysAgo,
+    NDaysAhead,
+    NWeeksAgo,
+    NWeeksAhead,
+    NMonthsAgo,
+    NMonthsAhead,
+    NYearsAgo,
+    NYearsAhead
+}

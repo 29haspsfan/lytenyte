@@ -1,0 +1,96 @@
+@namespace LyteNyteGrid.Components
+@typeparam T
+
+<div class="ln-rows-section ln-rows-@SectionClass"
+     style="@GetSectionStyle()">
+    @{
+        var rows = GetRows();
+        var startIndex = GetStartIndex();
+    }
+    @for (int i = 0; i < rows.Count; i++)
+    {
+        var row = rows[i];
+        var rowIndex = startIndex + i;
+        var absIndex = GetAbsoluteRowIndex(rowIndex);
+
+        <LnRow T="T"
+               Row="row"
+               RowIndex="absIndex"
+               IsAlternate="@(State.RowAlternate && absIndex % 2 == 1)" />
+    }
+</div>
+
+@code {
+    [CascadingParameter] public GridState<T> State { get; set; } = null!;
+    [Parameter] public Enums.RowPin Section { get; set; }
+
+    private GridDataSource<T> DS => State.DataSource;
+
+    private string SectionClass => Section switch
+    {
+        Enums.RowPin.Top => "top",
+        Enums.RowPin.Bottom => "bottom",
+        _ => "center"
+    };
+
+    private IReadOnlyList<RowNode> GetRows()
+    {
+        return Section switch
+        {
+            Enums.RowPin.Top => DS.TopRows,
+            Enums.RowPin.Bottom => DS.BottomRows,
+            _ => GetVirtualizedCenterRows(),
+        };
+    }
+
+    private IReadOnlyList<RowNode> GetVirtualizedCenterRows()
+    {
+        var centerRows = DS.CenterRows;
+        var bounds = State.Bounds;
+        var topCount = DS.TopRowCount;
+
+        var start = Math.Max(0, bounds.RowStart - topCount);
+        var end = Math.Min(centerRows.Count, bounds.RowEnd - topCount + 1);
+
+        if (start >= end || start >= centerRows.Count)
+            return [];
+
+        return centerRows.Skip(start).Take(end - start).ToList();
+    }
+
+    private int GetStartIndex()
+    {
+        return Section switch
+        {
+            Enums.RowPin.Top => 0,
+            Enums.RowPin.Bottom => DS.TopRowCount + DS.CenterRowCount,
+            _ => Math.Max(0, State.Bounds.RowStart - DS.TopRowCount),
+        };
+    }
+
+    private int GetAbsoluteRowIndex(int sectionIndex)
+    {
+        return Section switch
+        {
+            Enums.RowPin.Top => sectionIndex,
+            Enums.RowPin.Bottom => DS.TopRowCount + DS.CenterRowCount + sectionIndex,
+            _ => DS.TopRowCount + sectionIndex,
+        };
+    }
+
+    private string GetSectionStyle()
+    {
+        if (Section == Enums.RowPin.Top)
+            return "position:sticky;top:" + State.TotalHeaderHeight + "px;z-index:5;";
+        if (Section == Enums.RowPin.Bottom)
+            return "position:sticky;bottom:0;z-index:5;";
+
+        var topCount = DS.TopRowCount;
+        var startRow = Math.Max(0, State.Bounds.RowStart - topCount);
+        var yOffset = (topCount + startRow) < State.YPositions.Length
+            ? State.YPositions[topCount + startRow]
+            : 0;
+
+        return $"transform:translateY({yOffset}px);";
+    }
+}

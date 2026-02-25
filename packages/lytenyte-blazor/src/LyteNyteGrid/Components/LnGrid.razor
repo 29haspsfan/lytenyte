@@ -1,0 +1,223 @@
+@namespace LyteNyteGrid.Components
+@typeparam T
+@implements IDisposable
+
+<CascadingValue Value="State" IsFixed="false">
+    <div class="ln-grid @(Rtl ? "ln-rtl" : "") @(Styles?.Viewport?.ClassName)"
+         style="@GetViewportStyle()"
+         @onscroll="HandleScroll"
+         @onscroll:preventDefault="false">
+
+        @if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else
+        {
+            <LnViewport T="T">
+                <LnHeader T="T" />
+                <LnRowsContainer T="T">
+                    <LnRowSection T="T" Section="Enums.RowPin.Top" />
+                    <LnRowSection T="T" Section="Enums.RowPin.None" />
+                    <LnRowSection T="T" Section="Enums.RowPin.Bottom" />
+                </LnRowsContainer>
+            </LnViewport>
+        }
+    </div>
+</CascadingValue>
+
+@code {
+    /// <summary>Column definitions for the grid.</summary>
+    [Parameter] public IReadOnlyList<ColumnDefinition<T>> Columns { get; set; } = [];
+
+    /// <summary>The data source for row data.</summary>
+    [Parameter] public GridDataSource<T>? DataSource { get; set; }
+
+    /// <summary>Inline data to display (creates an internal data source).</summary>
+    [Parameter] public IReadOnlyList<T>? Data { get; set; }
+
+    /// <summary>Pinned top data rows.</summary>
+    [Parameter] public IReadOnlyList<T>? TopData { get; set; }
+
+    /// <summary>Pinned bottom data rows.</summary>
+    [Parameter] public IReadOnlyList<T>? BottomData { get; set; }
+
+    /// <summary>Function to extract a unique ID from a row data item.</summary>
+    [Parameter] public Func<T, string>? RowIdFn { get; set; }
+
+    /// <summary>Height of each data row in pixels.</summary>
+    [Parameter] public int RowHeight { get; set; } = 40;
+
+    /// <summary>Height of the header row in pixels.</summary>
+    [Parameter] public int HeaderHeight { get; set; } = 40;
+
+    /// <summary>Height of header group rows in pixels.</summary>
+    [Parameter] public int HeaderGroupHeight { get; set; } = 40;
+
+    /// <summary>Whether to use right-to-left layout.</summary>
+    [Parameter] public bool Rtl { get; set; }
+
+    /// <summary>Whether columns should size to fit the viewport.</summary>
+    [Parameter] public bool ColumnSizeToFit { get; set; }
+
+    /// <summary>Custom grid styles.</summary>
+    [Parameter] public GridStyle? Styles { get; set; }
+
+    /// <summary>Edit mode for the grid.</summary>
+    [Parameter] public EditMode EditMode { get; set; } = Enums.EditMode.ReadOnly;
+
+    /// <summary>How editing is activated.</summary>
+    [Parameter] public EditClickActivator EditClickActivator { get; set; } = Enums.EditClickActivator.DoubleClick;
+
+    /// <summary>Row selection mode.</summary>
+    [Parameter] public RowSelectionMode SelectionMode { get; set; } = Enums.RowSelectionMode.None;
+
+    /// <summary>How row selection is activated.</summary>
+    [Parameter] public RowSelectionActivator SelectionActivator { get; set; } = Enums.RowSelectionActivator.SingleClick;
+
+    /// <summary>Whether to show alternating row styling.</summary>
+    [Parameter] public bool RowAlternate { get; set; } = true;
+
+    /// <summary>Default expansion state for column groups.</summary>
+    [Parameter] public bool ColumnGroupDefaultExpansion { get; set; } = true;
+
+    /// <summary>Column group expansion state.</summary>
+    [Parameter] public Dictionary<string, bool>? ColumnGroupExpansions { get; set; }
+
+    /// <summary>Detail row expansions.</summary>
+    [Parameter] public HashSet<string>? RowDetailExpansions { get; set; }
+
+    /// <summary>Detail row height in pixels.</summary>
+    [Parameter] public int RowDetailHeight { get; set; } = 200;
+
+    /// <summary>Template for rendering detail rows.</summary>
+    [Parameter] public RenderFragment<RowDetailContext<T>>? RowDetailTemplate { get; set; }
+
+    /// <summary>Row overscan count above the viewport.</summary>
+    [Parameter] public int RowOverscanTop { get; set; } = 2;
+
+    /// <summary>Row overscan count below the viewport.</summary>
+    [Parameter] public int RowOverscanBottom { get; set; } = 2;
+
+    /// <summary>Column overscan count before the viewport.</summary>
+    [Parameter] public int ColOverscanStart { get; set; } = 1;
+
+    /// <summary>Column overscan count after the viewport.</summary>
+    [Parameter] public int ColOverscanEnd { get; set; } = 1;
+
+    /// <summary>Sort dimensions to apply.</summary>
+    [Parameter] public IReadOnlyList<SortDimension<T>>? Sort { get; set; }
+
+    /// <summary>Filter definitions to apply.</summary>
+    [Parameter] public IReadOnlyList<FilterDefinition>? Filters { get; set; }
+
+    /// <summary>Group definitions to apply.</summary>
+    [Parameter] public IReadOnlyList<GroupDefinition<T>>? Groups { get; set; }
+
+    /// <summary>Callback when columns change (reorder, resize).</summary>
+    [Parameter] public EventCallback<IReadOnlyList<ColumnDefinition<T>>> OnColumnsChange { get; set; }
+
+    /// <summary>Callback when column group expansion changes.</summary>
+    [Parameter] public EventCallback<Dictionary<string, bool>> OnColumnGroupExpansionChange { get; set; }
+
+    /// <summary>Callback when detail row expansions change.</summary>
+    [Parameter] public EventCallback<HashSet<string>> OnRowDetailExpansionsChange { get; set; }
+
+    /// <summary>Callback when row selection changes.</summary>
+    [Parameter] public EventCallback<RowSelectionState> OnRowSelectionChange { get; set; }
+
+    /// <summary>Callback when a row is clicked.</summary>
+    [Parameter] public EventCallback<RowEventContext<T>> OnRowClick { get; set; }
+
+    /// <summary>Callback when a row is double-clicked.</summary>
+    [Parameter] public EventCallback<RowEventContext<T>> OnRowDoubleClick { get; set; }
+
+    /// <summary>Callback when editing begins.</summary>
+    [Parameter] public EventCallback<EditContext<T>> OnEditBegin { get; set; }
+
+    /// <summary>Callback when editing ends.</summary>
+    [Parameter] public EventCallback<EditContext<T>> OnEditEnd { get; set; }
+
+    /// <summary>Optional child content for custom grid composition.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// The grid state, exposed for programmatic access.
+    /// Implements IGridApi&lt;T&gt;.
+    /// </summary>
+    public GridState<T> State { get; private set; } = null!;
+
+    private GridDataSource<T> _internalDataSource = new();
+    private GridDataSource<T> EffectiveDataSource => DataSource ?? _internalDataSource;
+
+    protected override void OnInitialized()
+    {
+        State = new GridState<T>(EffectiveDataSource);
+        EffectiveDataSource.DataChanged += OnDataSourceChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Sync parameters to state
+        State.Columns = Columns;
+        State.HeaderHeight = HeaderHeight;
+        State.HeaderGroupHeight = HeaderGroupHeight;
+        State.RowHeight = RowHeight;
+        State.Rtl = Rtl;
+        State.ColumnSizeToFit = ColumnSizeToFit;
+        State.Styles = Styles;
+        State.EditMode = EditMode;
+        State.EditClickActivator = EditClickActivator;
+        State.SelectionMode = SelectionMode;
+        State.SelectionActivator = SelectionActivator;
+        State.RowAlternate = RowAlternate;
+        State.ColumnGroupDefaultExpansion = ColumnGroupDefaultExpansion;
+        State.DetailRowHeight = RowDetailHeight;
+
+        if (ColumnGroupExpansions is not null)
+            State.ColumnGroupExpansions = new Dictionary<string, bool>(ColumnGroupExpansions);
+        if (RowDetailExpansions is not null)
+            State.DetailExpansions = new HashSet<string>(RowDetailExpansions);
+
+        // Configure data source if using inline data
+        if (DataSource is null)
+        {
+            _internalDataSource.Configure(Columns, RowIdFn);
+            _internalDataSource.SetSort(Sort);
+            _internalDataSource.SetFilters(Filters);
+            _internalDataSource.SetGroups(Groups);
+
+            if (Data is not null)
+                _internalDataSource.SetData(Data, TopData, BottomData);
+        }
+
+        State.RecomputeLayout();
+    }
+
+    private void HandleScroll(EventArgs e)
+    {
+        // In Blazor without JS interop, scroll events are handled differently.
+        // The actual scroll position is tracked via the viewport element.
+        // This triggers a re-render with updated bounds.
+        StateHasChanged();
+    }
+
+    private void OnDataSourceChanged()
+    {
+        State.RecomputeLayout();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetViewportStyle()
+    {
+        var style = "position:relative;overflow:auto;";
+        if (Styles?.Viewport?.Style is not null)
+            style += Styles.Viewport.Style;
+        return style;
+    }
+
+    public void Dispose()
+    {
+        EffectiveDataSource.DataChanged -= OnDataSourceChanged;
+    }
+}

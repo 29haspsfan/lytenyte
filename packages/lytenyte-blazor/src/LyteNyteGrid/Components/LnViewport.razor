@@ -1,0 +1,18 @@
+@namespace LyteNyteGrid.Components
+@typeparam T
+
+<div class="ln-viewport" style="@GetContainerStyle()">
+    @ChildContent
+</div>
+
+@code {
+    [CascadingParameter] public GridState<T> State { get; set; } = null!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string GetContainerStyle()
+    {
+        var totalWidth = State.TotalContentWidth;
+        var totalHeight = State.TotalContentHeight + State.TotalHeaderHeight;
+        return $"position:relative;min-width:{totalWidth}px;min-height:{totalHeight}px;";
+    }
+}

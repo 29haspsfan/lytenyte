@@ -1,0 +1,255 @@
+@namespace LyteNyteGrid.Components
+@typeparam T
+
+<div class="ln-header @(State.Styles?.Header?.ClassName)"
+     style="@GetHeaderStyle()"
+     role="rowgroup">
+
+    @* Header group rows *@
+    @for (int depth = 0; depth < State.View.MaxHeaderDepth; depth++)
+    {
+        var d = depth;
+        <div class="ln-header-group-row @(State.Styles?.HeaderGroup?.ClassName)"
+             style="@GetHeaderGroupRowStyle(d)"
+             role="row">
+            @{
+                var groups = GetGroupsAtDepth(d);
+                foreach (var group in groups)
+                {
+                    <div class="ln-header-group-cell"
+                         style="@GetHeaderGroupCellStyle(group)"
+                         role="columnheader">
+                        <span class="ln-header-group-text">@group.Label</span>
+                        @if (group.Collapsible)
+                        {
+                            <button class="ln-header-group-toggle"
+                                    @onclick="() => State.ColumnToggleGroup(group.GroupId)">
+                                @(group.Collapsed ? "+" : "−")
+                            </button>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    }
+
+    @* Main header row *@
+    <div class="ln-header-row"
+         style="@GetHeaderRowStyle()"
+         role="row">
+        @foreach (var col in State.View.VisibleColumns)
+        {
+            var column = col;
+            var colIndex = State.View.ColumnIdToIndex[column.Id];
+            <div class="ln-header-cell @column.HeaderClass @GetPinClass(column)"
+                 style="@GetHeaderCellStyle(colIndex, column)"
+                 role="columnheader"
+                 @onclick="() => HandleHeaderClick(column)"
+                 @onclick:stopPropagation="true">
+
+                @if (column.HeaderTemplate is not null)
+                {
+                    @column.HeaderTemplate(new HeaderContext<T> { Column = column, Api = State })
+                }
+                else
+                {
+                    <span class="ln-header-text">@(column.HeaderName ?? column.Id)</span>
+                    @if (column.Sort.HasValue)
+                    {
+                        <span class="ln-sort-indicator">
+                            @(column.Sort == Enums.SortDirection.Ascending ? "▲" : "▼")
+                        </span>
+                    }
+                }
+
+                @if (column.Resizable)
+                {
+                    <div class="ln-resize-handle"
+                         @onmousedown="(e) => HandleResizeStart(e, column)"
+                         @onmousedown:stopPropagation="true">
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public GridState<T> State { get; set; } = null!;
+
+    private string GetHeaderStyle()
+    {
+        var height = State.TotalHeaderHeight;
+        var style = $"position:sticky;top:0;z-index:10;height:{height}px;";
+        if (State.Styles?.Header?.Style is not null)
+            style += State.Styles.Header.Style;
+        return style;
+    }
+
+    private string GetHeaderGroupRowStyle(int depth)
+    {
+        return $"display:grid;grid-template-columns:{GetGridTemplateColumns()};height:{State.HeaderGroupHeight}px;";
+    }
+
+    private string GetHeaderRowStyle()
+    {
+        return $"display:grid;grid-template-columns:{GetGridTemplateColumns()};height:{State.HeaderHeight}px;";
+    }
+
+    private string GetGridTemplateColumns()
+    {
+        var columns = State.View.VisibleColumns;
+        if (columns.Count == 0) return "";
+
+        var parts = new string[columns.Count];
+        for (int i = 0; i < columns.Count; i++)
+        {
+            var width = i < State.XPositions.Length - 1
+                ? State.XPositions[i + 1] - State.XPositions[i]
+                : columns[i].Width;
+            parts[i] = $"{width}px";
+        }
+        return string.Join(" ", parts);
+    }
+
+    private string GetHeaderCellStyle(int colIndex, ColumnDefinition<T> column)
+    {
+        var style = $"grid-column:{colIndex + 1};";
+        if (column.Pin != Enums.ColumnPin.None)
+            style += "position:sticky;z-index:1;";
+        if (column.Pin == Enums.ColumnPin.Start && colIndex < State.XPositions.Length)
+            style += $"{(State.Rtl ? "right" : "left")}:{State.XPositions[colIndex]}px;";
+        if (State.Styles?.Cell?.Style is not null)
+            style += State.Styles.Cell.Style;
+        return style;
+    }
+
+    private string GetHeaderGroupCellStyle(HeaderGroupInfo group)
+    {
+        return $"grid-column:{group.ColStart + 1} / span {group.ColSpan};";
+    }
+
+    private string GetPinClass(ColumnDefinition<T> column) => column.Pin switch
+    {
+        Enums.ColumnPin.Start => "ln-pin-start",
+        Enums.ColumnPin.End => "ln-pin-end",
+        _ => ""
+    };
+
+    private void HandleHeaderClick(ColumnDefinition<T> column)
+    {
+        if (!column.Sortable) return;
+
+        column.Sort = column.Sort switch
+        {
+            null => Enums.SortDirection.Ascending,
+            Enums.SortDirection.Ascending => Enums.SortDirection.Descending,
+            _ => null
+        };
+
+        // Rebuild sort dimensions from column states
+        var sorts = State.Columns
+            .Where(c => c.Sort.HasValue)
+            .OrderBy(c => c.SortIndex ?? int.MaxValue)
+            .Select(c => new SortDimension<T>
+            {
+                ColumnId = c.Id,
+                Direction = c.Sort!.Value,
+                Comparator = c.SortComparator
+            })
+            .ToList();
+
+        var ds = State is GridState<T> gs ? gs : null;
+        // Trigger data source refresh via the parent
+        State.NotifyStateChanged();
+    }
+
+    private void HandleResizeStart(MouseEventArgs e, ColumnDefinition<T> column)
+    {
+        // Column resize in pure Blazor without JS interop:
+        // We track the starting position and compute deltas on mouse move.
+        // For a production implementation, this would use a drag tracking component.
+        // Here we provide a simplified click-based resize.
+    }
+
+    private List<HeaderGroupInfo> GetGroupsAtDepth(int depth)
+    {
+        var result = new List<HeaderGroupInfo>();
+        var columns = State.View.VisibleColumns;
+
+        string? currentGroupId = null;
+        int spanStart = 0;
+        int spanCount = 0;
+
+        for (int i = 0; i < columns.Count; i++)
+        {
+            var col = columns[i];
+            var groupAtDepth = col.ColumnGroup is not null && col.ColumnGroup.Length > depth
+                ? col.ColumnGroup[depth]
+                : null;
+
+            var groupId = col.ColumnGroup is not null && col.ColumnGroup.Length > depth
+                ? string.Join("->", col.ColumnGroup.Take(depth + 1))
+                : null;
+
+            if (groupId != currentGroupId)
+            {
+                if (currentGroupId is not null)
+                {
+                    result.Add(CreateGroupInfo(currentGroupId, spanStart, spanCount, depth));
+                }
+                currentGroupId = groupId;
+                spanStart = i;
+                spanCount = 1;
+            }
+            else
+            {
+                spanCount++;
+            }
+        }
+
+        if (currentGroupId is not null)
+        {
+            result.Add(CreateGroupInfo(currentGroupId, spanStart, spanCount, depth));
+        }
+
+        return result;
+    }
+
+    private HeaderGroupInfo CreateGroupInfo(string groupId, int colStart, int colSpan, int depth)
+    {
+        var parts = groupId.Split("->");
+        var label = parts.Length > 0 ? parts[^1] : groupId;
+        var collapsed = !State.ColumnGroupExpansions.GetValueOrDefault(groupId, State.ColumnGroupDefaultExpansion);
+
+        // Determine if collapsible: has both open-only and close-only columns
+        var columns = State.Columns
+            .Where(c => c.ColumnGroup is not null && c.ColumnGroup.Length > depth &&
+                        string.Join("->", c.ColumnGroup.Take(depth + 1)) == groupId)
+            .ToList();
+
+        var hasOpen = columns.Any(c => c.ColumnGroupShow == Enums.ColumnGroupVisibility.Open);
+        var hasClose = columns.Any(c => c.ColumnGroupShow == Enums.ColumnGroupVisibility.Close);
+        var collapsible = hasOpen && hasClose;
+
+        return new HeaderGroupInfo
+        {
+            GroupId = groupId,
+            Label = label,
+            ColStart = colStart,
+            ColSpan = colSpan,
+            Collapsible = collapsible,
+            Collapsed = collapsed,
+        };
+    }
+
+    private record HeaderGroupInfo
+    {
+        public required string GroupId { get; init; }
+        public required string Label { get; init; }
+        public required int ColStart { get; init; }
+        public required int ColSpan { get; init; }
+        public required bool Collapsible { get; init; }
+        public required bool Collapsed { get; init; }
+    }
+}

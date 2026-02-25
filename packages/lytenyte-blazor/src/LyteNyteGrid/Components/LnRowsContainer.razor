@@ -1,0 +1,13 @@
+@namespace LyteNyteGrid.Components
+@typeparam T
+
+<div class="ln-rows-container"
+     style="position:relative;"
+     role="rowgroup">
+    @ChildContent
+</div>
+
+@code {
+    [CascadingParameter] public GridState<T> State { get; set; } = null!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

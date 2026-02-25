@@ -1,0 +1,128 @@
+@namespace LyteNyteGrid.Components
+@typeparam T
+
+<div class="ln-row @GetRowClass() @(State.Styles?.Row?.ClassName)"
+     style="@GetRowStyle()"
+     role="row"
+     data-row-index="@RowIndex"
+     @onclick="HandleRowClick"
+     @ondblclick="HandleRowDoubleClick">
+
+    @foreach (var col in State.View.VisibleColumns)
+    {
+        var column = col;
+        var colIndex = State.View.ColumnIdToIndex[column.Id];
+
+        <LnCell T="T"
+                Row="Row"
+                Column="column"
+                RowIndex="RowIndex"
+                ColIndex="colIndex" />
+    }
+</div>
+
+@if (State.DetailExpansions.Contains(Row.Id))
+{
+    <div class="ln-detail-row @(State.Styles?.Detail?.ClassName)"
+         style="@GetDetailStyle()">
+        @if (DetailTemplate is not null)
+        {
+            @DetailTemplate(new RowDetailContext<T>
+            {
+                Row = Row,
+                RowIndex = RowIndex,
+                Api = State
+            })
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter] public GridState<T> State { get; set; } = null!;
+    [Parameter] public required RowNode Row { get; set; }
+    [Parameter] public int RowIndex { get; set; }
+    [Parameter] public bool IsAlternate { get; set; }
+    [Parameter] public RenderFragment<RowDetailContext<T>>? DetailTemplate { get; set; }
+
+    private string GetRowClass()
+    {
+        var classes = new List<string>();
+        if (IsAlternate) classes.Add("ln-row-alt");
+        if (Row is RowGroup) classes.Add("ln-row-group");
+        if (Row is RowLeaf) classes.Add("ln-row-leaf");
+        if (State.GetSelectionState().IsSelected(Row.Id)) classes.Add("ln-row-selected");
+        return string.Join(" ", classes);
+    }
+
+    private string GetRowStyle()
+    {
+        var height = RowIndex < State.YPositions.Length - 1
+            ? State.YPositions[RowIndex + 1] - State.YPositions[RowIndex]
+            : State.RowHeight;
+
+        var style = $"display:grid;grid-template-columns:{GetGridTemplateColumns()};height:{height}px;";
+        if (State.Styles?.Row?.Style is not null)
+            style += State.Styles.Row.Style;
+        return style;
+    }
+
+    private string GetDetailStyle()
+    {
+        var height = State.DetailRowHeight;
+        var style = $"height:{height}px;overflow:auto;";
+        if (State.Styles?.Detail?.Style is not null)
+            style += State.Styles.Detail.Style;
+        return style;
+    }
+
+    private string GetGridTemplateColumns()
+    {
+        var columns = State.View.VisibleColumns;
+        if (columns.Count == 0) return "";
+
+        var parts = new string[columns.Count];
+        for (int i = 0; i < columns.Count; i++)
+        {
+            var width = i < State.XPositions.Length - 1
+                ? State.XPositions[i + 1] - State.XPositions[i]
+                : columns[i].Width;
+            parts[i] = $"{width}px";
+        }
+        return string.Join(" ", parts);
+    }
+
+    private void HandleRowClick()
+    {
+        if (State.SelectionMode != Enums.RowSelectionMode.None &&
+            State.SelectionActivator == Enums.RowSelectionActivator.SingleClick)
+        {
+            HandleSelection();
+        }
+    }
+
+    private void HandleRowDoubleClick()
+    {
+        if (State.SelectionMode != Enums.RowSelectionMode.None &&
+            State.SelectionActivator == Enums.RowSelectionActivator.DoubleClick)
+        {
+            HandleSelection();
+        }
+    }
+
+    private void HandleSelection()
+    {
+        var selection = State.GetSelectionState();
+
+        if (State.SelectionMode == Enums.RowSelectionMode.Single)
+        {
+            selection.Clear();
+            selection.Select(Row.Id);
+        }
+        else if (State.SelectionMode == Enums.RowSelectionMode.Multiple)
+        {
+            selection.Toggle(Row.Id);
+        }
+
+        State.NotifyStateChanged();
+    }
+}
