@@ -91,17 +91,24 @@ export const BoundsProvider = memo(
       const controller = new AbortController();
 
       let frame: number | null = null;
-      viewport.addEventListener("scroll", () => {
-        if (frame) return;
+      viewport.addEventListener(
+        "scroll",
+        () => {
+          if (frame) return;
 
-        frame = requestAnimationFrame(() => {
-          setScrollTop(viewport.scrollTop);
-          setScrollLeft(Math.abs(viewport.scrollLeft));
-          frame = null;
-        });
-      });
+          frame = requestAnimationFrame(() => {
+            setScrollTop(viewport.scrollTop);
+            setScrollLeft(Math.abs(viewport.scrollLeft));
+            frame = null;
+          });
+        },
+        { signal: controller.signal },
+      );
 
-      return () => controller.abort();
+      return () => {
+        controller.abort();
+        if (frame != null) cancelAnimationFrame(frame);
+      };
     }, [viewport]);
 
     const startBounds = useMemo<[start: number, end: number]>(() => {
