@@ -54,18 +54,25 @@ export function ViewportShadows({
     const controller = new AbortController();
 
     let frame: number | null = null;
-    viewport.addEventListener("scroll", () => {
-      if (frame) return;
+    viewport.addEventListener(
+      "scroll",
+      () => {
+        if (frame) return;
 
-      frame = requestAnimationFrame(() => {
-        const [xStatus, yStatus] = getScrollStatus(viewport);
-        viewport.setAttribute("data-ln-x-status", xStatus);
-        viewport.setAttribute("data-ln-y-status", yStatus);
-        frame = null;
-      });
-    });
+        frame = requestAnimationFrame(() => {
+          const [xStatus, yStatus] = getScrollStatus(viewport);
+          viewport.setAttribute("data-ln-x-status", xStatus);
+          viewport.setAttribute("data-ln-y-status", yStatus);
+          frame = null;
+        });
+      },
+      { signal: controller.signal },
+    );
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (frame != null) cancelAnimationFrame(frame);
+    };
   }, [viewport]);
 
   return (
