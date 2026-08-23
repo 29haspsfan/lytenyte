@@ -12,8 +12,19 @@ public class ColumnDefinition<T>
     /// <summary>Unique identifier for this column.</summary>
     public required string Id { get; init; }
 
-    /// <summary>Display name shown in the header.</summary>
-    public string? HeaderName { get; set; }
+    /// <summary>Display name shown in the header (React: name).</summary>
+    public string? Name { get; set; }
+
+    /// <summary>Display name shown in the header (legacy alias for Name).</summary>
+    [Obsolete("Use Name instead. HeaderName is retained for backward compatibility.")]
+    public string? HeaderName
+    {
+        get => Name;
+        set => Name = value;
+    }
+
+    /// <summary>Column data type hint: "string", "number", "date", "datetime", or custom.</summary>
+    public string? Type { get; set; }
 
     /// <summary>
     /// The field accessor for extracting a value from the row data.
@@ -36,6 +47,9 @@ public class ColumnDefinition<T>
     /// <summary>Maximum width in pixels.</summary>
     public int? MaxWidth { get; set; }
 
+    /// <summary>Flex width factor for proportional sizing.</summary>
+    public int? WidthFlex { get; set; }
+
     /// <summary>Whether this column can be resized by the user.</summary>
     public bool Resizable { get; set; } = true;
 
@@ -51,14 +65,38 @@ public class ColumnDefinition<T>
     /// <summary>Whether this column can be reordered by dragging.</summary>
     public bool Movable { get; set; } = true;
 
-    /// <summary>Whether the column is visible.</summary>
-    public bool Visible { get; set; } = true;
+    /// <summary>Whether the column is hidden (React: hide). Inverted semantics from Visible.</summary>
+    public bool Hide { get; set; }
 
-    /// <summary>Column groups this column belongs to (outermost to innermost).</summary>
-    public string[]? ColumnGroup { get; set; }
+    /// <summary>Whether the column is visible (legacy, inverse of Hide).</summary>
+    [Obsolete("Use Hide instead. Visible is retained for backward compatibility.")]
+    public bool Visible
+    {
+        get => !Hide;
+        set => Hide = !value;
+    }
 
-    /// <summary>Visibility behavior within a column group.</summary>
-    public ColumnGroupVisibility ColumnGroupShow { get; set; } = ColumnGroupVisibility.Always;
+    /// <summary>Column groups this column belongs to (outermost to innermost). React: groupPath.</summary>
+    public string[]? GroupPath { get; set; }
+
+    /// <summary>Column groups (legacy alias for GroupPath).</summary>
+    [Obsolete("Use GroupPath instead. ColumnGroup is retained for backward compatibility.")]
+    public string[]? ColumnGroup
+    {
+        get => GroupPath;
+        set => GroupPath = value;
+    }
+
+    /// <summary>Visibility behavior within a column group (React: groupVisibility).</summary>
+    public ColumnGroupVisibility GroupVisibility { get; set; } = ColumnGroupVisibility.Always;
+
+    /// <summary>Visibility behavior within a column group (legacy alias for GroupVisibility).</summary>
+    [Obsolete("Use GroupVisibility instead. ColumnGroupShow is retained for backward compatibility.")]
+    public ColumnGroupVisibility ColumnGroupShow
+    {
+        get => GroupVisibility;
+        set => GroupVisibility = value;
+    }
 
     /// <summary>Column span: how many columns this cell should span.</summary>
     public int ColSpan { get; set; } = 1;
@@ -78,6 +116,9 @@ public class ColumnDefinition<T>
     /// <summary>Dynamic editable predicate.</summary>
     public Func<CellContext<T>, bool>? EditableFn { get; set; }
 
+    /// <summary>Start editing when a printable key is pressed (React: editOnPrintable).</summary>
+    public bool EditOnPrintable { get; set; }
+
     /// <summary>Custom cell renderer template.</summary>
     public RenderFragment<CellRendererContext<T>>? CellTemplate { get; set; }
 
@@ -86,6 +127,15 @@ public class ColumnDefinition<T>
 
     /// <summary>Custom edit renderer template.</summary>
     public RenderFragment<EditContext<T>>? EditTemplate { get; set; }
+
+    /// <summary>Custom template for floating/summary row cells.</summary>
+    public RenderFragment<CellRendererContext<T>>? FloatingCellTemplate { get; set; }
+
+    /// <summary>Custom function to measure cell content width for column autosize.</summary>
+    public Func<CellRendererContext<T>, double>? AutosizeCellFn { get; set; }
+
+    /// <summary>Custom function to measure header content width for column autosize.</summary>
+    public Func<HeaderContext<T>, double>? AutosizeHeaderFn { get; set; }
 
     /// <summary>Custom CSS class for cells in this column.</summary>
     public string? CellClass { get; set; }
@@ -133,6 +183,9 @@ public class ColumnDefinition<T>
 
         if (node is RowGroup group && FieldName is not null)
             return group.Data.GetValueOrDefault(FieldName);
+
+        if (node is RowAggregated aggregated && FieldName is not null)
+            return aggregated.Data.GetValueOrDefault(FieldName);
 
         return null;
     }

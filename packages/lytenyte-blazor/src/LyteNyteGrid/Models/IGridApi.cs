@@ -1,3 +1,5 @@
+using LyteNyteGrid.Enums;
+
 namespace LyteNyteGrid.Models;
 
 /// <summary>
@@ -13,6 +15,8 @@ public interface IGridApi<T>
     object? ColumnField(string columnId, RowNode row);
     void ColumnMove(string[] moveColumnIds, string targetColumnId, bool before = false);
     void ColumnResize(Dictionary<string, int> sizes);
+    Dictionary<string, int> ColumnAutosize(bool dryRun = false, bool includeHeader = true, string[]? columnIds = null);
+    void ColumnUpdate(Dictionary<string, object> updates);
     void ColumnToggleGroup(string groupId, bool? state = null);
     ColumnView<T> GetColumnView();
 
@@ -20,9 +24,12 @@ public interface IGridApi<T>
     RowNode? RowByIndex(int index);
     bool RowDetailExpanded(string rowId);
     void RowDetailToggle(string rowId, bool? state = null);
+    int RowDetailHeight(string rowId);
     void RowGroupToggle(string rowId, bool? state = null);
     bool RowIsExpanded(RowNode row);
     bool RowIsExpandable(RowNode row);
+    bool RowIsAggregated(RowNode row);
+    bool IsFullWidthRow(int rowIndex);
     (int RowCount, int TopCount, int BottomCount, int CenterCount) RowView();
 
     // Row selection
@@ -30,10 +37,19 @@ public interface IGridApi<T>
     void RowSelectAll(bool deselect = false);
     RowSelectionState GetSelectionState();
 
+    // Cell selection
+    IReadOnlyList<CellSelectionRect> GetCellSelections();
+    void CellSelectionAdd(CellSelectionRect rect);
+    void CellSelectionRemove(int index);
+    void CellSelectionClear();
+    bool IsCellSelected(int rowIndex, int colIndex);
+
     // Editing
     void EditBegin(string columnId, int rowIndex);
     void EditEnd(bool cancel = false);
     bool EditIsCellActive(string columnId, int rowIndex);
+    void EditUpdateRows(Dictionary<string, T> rowUpdates);
+    void EditUpdateCells(Dictionary<string, List<(object? value, string columnId)>> cellUpdates);
 
     // Data operations
     void AddRows(IEnumerable<T> rows, int? index = null);
@@ -46,4 +62,5 @@ public interface IGridApi<T>
 
     // Data export
     IReadOnlyList<IReadOnlyList<object?>> ExportData(int? rowStart = null, int? rowEnd = null, int? colStart = null, int? colEnd = null);
+    ExportDataResult<T> ExportDataFull(int? rowStart = null, int? rowEnd = null, int? colStart = null, int? colEnd = null);
 }

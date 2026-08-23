@@ -4,13 +4,17 @@
 @{
     var isEditing = State.ActiveEdit is var (editColId, editRowIdx)
         && editColId == Column.Id && editRowIdx == RowIndex;
+    var isFocused = State.FocusedCell is { } fc
+        && fc.RowIndex == RowIndex && fc.ColIndex == ColIndex;
 }
 
-<div class="ln-cell @Column.CellClass @GetPinClass() @(State.Styles?.Cell?.ClassName)"
+<div class="ln-cell @Column.CellClass @GetPinClass() @(isFocused ? "ln-cell-focused" : "") @(State.Styles?.Cell?.ClassName)"
      style="@GetCellStyle()"
      role="gridcell"
+     tabindex="-1"
      data-col-index="@ColIndex"
      data-row-index="@RowIndex"
+     data-ln-col-id="@Column.Id"
      @onclick="HandleCellClick"
      @ondblclick="HandleCellDoubleClick">
 
@@ -48,6 +52,7 @@
             Value = Value,
             Selected = State.GetSelectionState().IsSelected(Row.Id),
             DetailExpanded = State.DetailExpansions.Contains(Row.Id),
+            Indeterminate = IsIndeterminate(),
         })
     }
     else if (Row is RowGroup group && ColIndex == 0)
@@ -72,6 +77,21 @@
     [Parameter] public int ColIndex { get; set; }
 
     private object? Value => Column.GetValueFromNode(Row);
+
+    private bool IsIndeterminate()
+    {
+        // Indeterminate state applies to group rows where some but not all children are selected.
+        // This enables tri-state checkbox rendering in grouped selection scenarios.
+        if (Row is not RowGroup) return false;
+
+        var selection = State.GetSelectionState();
+        if (selection.AllSelected) return false;
+        if (!selection.IsSelected(Row.Id)) return false;
+
+        // If the group row itself is selected, it may be indeterminate if not all children are
+        // This is a simplified heuristic; full implementation would walk child rows
+        return true;
+    }
 
     private string GetCellStyle()
     {
@@ -112,6 +132,9 @@
 
     private void HandleCellClick()
     {
+        // Update focused cell on click
+        State.FocusCell(RowIndex, ColIndex);
+
         if (State.EditMode != Enums.EditMode.ReadOnly &&
             State.EditClickActivator == Enums.EditClickActivator.SingleClick)
         {

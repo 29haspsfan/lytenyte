@@ -20,6 +20,9 @@ public class CellRendererContext<T> : CellContext<T>
     public required object? Value { get; init; }
     public required bool Selected { get; init; }
     public required bool DetailExpanded { get; init; }
+
+    /// <summary>Whether the selection is indeterminate (tri-state, e.g. grouped checkbox selection).</summary>
+    public bool Indeterminate { get; init; }
 }
 
 /// <summary>

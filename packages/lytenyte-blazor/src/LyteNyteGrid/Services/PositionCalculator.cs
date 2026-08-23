@@ -98,6 +98,62 @@ public static class PositionCalculator
     }
 
     /// <summary>
+    /// Computes row positions using a <see cref="RowHeightMode"/> for auto, fill, and function support.
+    /// </summary>
+    /// <param name="rowCount">Total number of rows.</param>
+    /// <param name="mode">The row height mode configuration.</param>
+    /// <param name="availableHeight">The available viewport height (used for fill mode).</param>
+    /// <param name="measuredHeights">
+    /// Optional dictionary of row-index to measured height (for auto mode, populated after
+    /// the first render pass measures actual content). Overrides the guess height for rows
+    /// that have been measured.
+    /// </param>
+    /// <param name="detailHeights">Optional detail-row height overrides keyed by row ID.</param>
+    /// <param name="rowIdForIndex">Resolves a row index to its ID (for detail-height lookup).</param>
+    /// <returns>Cumulative y-position array (length = rowCount + 1).</returns>
+    public static int[] ComputeRowPositions(
+        int rowCount,
+        RowHeightMode mode,
+        int availableHeight,
+        Dictionary<int, int>? measuredHeights = null,
+        Dictionary<string, int>? detailHeights = null,
+        Func<int, string?>? rowIdForIndex = null)
+    {
+        if (rowCount == 0)
+            return [0];
+
+        var positions = new int[rowCount + 1];
+        positions[0] = 0;
+
+        for (int i = 0; i < rowCount; i++)
+        {
+            int rowHeight;
+
+            // Check for a previously measured height (auto mode first render pass)
+            if (measuredHeights is not null && measuredHeights.TryGetValue(i, out var measured))
+            {
+                rowHeight = measured;
+            }
+            else
+            {
+                rowHeight = mode.Resolve(i, rowCount, availableHeight);
+            }
+
+            // Add detail row height if expanded
+            if (detailHeights is not null && rowIdForIndex is not null)
+            {
+                var rowId = rowIdForIndex(i);
+                if (rowId is not null && detailHeights.TryGetValue(rowId, out var detailHeight))
+                    rowHeight += detailHeight;
+            }
+
+            positions[i + 1] = positions[i] + rowHeight;
+        }
+
+        return positions;
+    }
+
+    /// <summary>
     /// Computes the virtualization bounds: which rows and columns are visible in the viewport.
     /// </summary>
     public static ViewBounds ComputeBounds(

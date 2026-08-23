@@ -43,18 +43,18 @@ public class ColumnView<T>
 
         foreach (var col in columns)
         {
-            if (!col.Visible)
+            if (col.Hide)
                 continue;
 
             // Check column group visibility
-            if (col.ColumnGroup is { Length: > 0 } && col.ColumnGroupShow != ColumnGroupVisibility.Always)
+            if (col.GroupPath is { Length: > 0 } && col.GroupVisibility != ColumnGroupVisibility.Always)
             {
-                var groupId = string.Join("->", col.ColumnGroup);
+                var groupId = string.Join("->", col.GroupPath);
                 var isExpanded = groupExpansions?.GetValueOrDefault(groupId, groupDefaultExpansion) ?? groupDefaultExpansion;
 
-                if (col.ColumnGroupShow == ColumnGroupVisibility.Open && !isExpanded)
+                if (col.GroupVisibility == ColumnGroupVisibility.Open && !isExpanded)
                     continue;
-                if (col.ColumnGroupShow == ColumnGroupVisibility.Close && isExpanded)
+                if (col.GroupVisibility == ColumnGroupVisibility.Close && isExpanded)
                     continue;
             }
 
@@ -75,8 +75,8 @@ public class ColumnView<T>
                     break;
             }
 
-            if (col.ColumnGroup is not null)
-                maxDepth = Math.Max(maxDepth, col.ColumnGroup.Length);
+            if (col.GroupPath is not null)
+                maxDepth = Math.Max(maxDepth, col.GroupPath.Length);
         }
 
         return new ColumnView<T>

@@ -53,7 +53,7 @@
                 }
                 else
                 {
-                    <span class="ln-header-text">@(column.HeaderName ?? column.Id)</span>
+                    <span class="ln-header-text">@(column.Name ?? column.Id)</span>
                     @if (column.Sort.HasValue)
                     {
                         <span class="ln-sort-indicator">
@@ -72,6 +72,37 @@
             </div>
         }
     </div>
+
+    @* Floating row (below main header, when enabled) *@
+    @if (State.FloatingRowEnabled)
+    {
+        <div class="ln-floating-row"
+             style="@GetFloatingRowStyle()"
+             role="row">
+            @foreach (var col in State.View.VisibleColumns)
+            {
+                var column = col;
+                var colIndex = State.View.ColumnIdToIndex[column.Id];
+                <div class="ln-floating-cell"
+                     style="@GetFloatingCellStyle(colIndex, column)">
+                    @if (column.FloatingCellTemplate is not null)
+                    {
+                        @column.FloatingCellTemplate(new CellRendererContext<T>
+                        {
+                            Row = null!,
+                            Column = column,
+                            RowIndex = -1,
+                            ColIndex = colIndex,
+                            Api = State,
+                            Value = null,
+                            Selected = false,
+                            DetailExpanded = false,
+                        })
+                    }
+                </div>
+            }
+        </div>
+    }
 </div>
 
 @code {
@@ -136,6 +167,21 @@
         _ => ""
     };
 
+    private string GetFloatingRowStyle()
+    {
+        return $"display:grid;grid-template-columns:{GetGridTemplateColumns()};height:{State.FloatingRowHeight}px;";
+    }
+
+    private string GetFloatingCellStyle(int colIndex, ColumnDefinition<T> column)
+    {
+        var style = $"grid-column:{colIndex + 1};";
+        if (column.Pin != Enums.ColumnPin.None)
+            style += "position:sticky;z-index:1;";
+        if (column.Pin == Enums.ColumnPin.Start && colIndex < State.XPositions.Length)
+            style += $"{(State.Rtl ? "right" : "left")}:{State.XPositions[colIndex]}px;";
+        return style;
+    }
+
     private void HandleHeaderClick(ColumnDefinition<T> column)
     {
         if (!column.Sortable) return;
@@ -184,12 +230,12 @@
         for (int i = 0; i < columns.Count; i++)
         {
             var col = columns[i];
-            var groupAtDepth = col.ColumnGroup is not null && col.ColumnGroup.Length > depth
-                ? col.ColumnGroup[depth]
+            var groupAtDepth = col.GroupPath is not null && col.GroupPath.Length > depth
+                ? col.GroupPath[depth]
                 : null;
 
-            var groupId = col.ColumnGroup is not null && col.ColumnGroup.Length > depth
-                ? string.Join("->", col.ColumnGroup.Take(depth + 1))
+            var groupId = col.GroupPath is not null && col.GroupPath.Length > depth
+                ? string.Join("->", col.GroupPath.Take(depth + 1))
                 : null;
 
             if (groupId != currentGroupId)
@@ -224,12 +270,12 @@
 
         // Determine if collapsible: has both open-only and close-only columns
         var columns = State.Columns
-            .Where(c => c.ColumnGroup is not null && c.ColumnGroup.Length > depth &&
-                        string.Join("->", c.ColumnGroup.Take(depth + 1)) == groupId)
+            .Where(c => c.GroupPath is not null && c.GroupPath.Length > depth &&
+                        string.Join("->", c.GroupPath.Take(depth + 1)) == groupId)
             .ToList();
 
-        var hasOpen = columns.Any(c => c.ColumnGroupShow == Enums.ColumnGroupVisibility.Open);
-        var hasClose = columns.Any(c => c.ColumnGroupShow == Enums.ColumnGroupVisibility.Close);
+        var hasOpen = columns.Any(c => c.GroupVisibility == Enums.ColumnGroupVisibility.Open);
+        var hasClose = columns.Any(c => c.GroupVisibility == Enums.ColumnGroupVisibility.Close);
         var collapsible = hasOpen && hasClose;
 
         return new HeaderGroupInfo

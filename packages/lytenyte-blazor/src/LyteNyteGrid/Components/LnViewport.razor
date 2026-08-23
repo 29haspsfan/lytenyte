@@ -1,18 +1,36 @@
 @namespace LyteNyteGrid.Components
 @typeparam T
 
-<div class="ln-viewport" style="@GetContainerStyle()">
+<div class="ln-viewport @(State.SuppressScrollFlash ? "ln-suppress-flash" : "")"
+     style="@GetContainerStyle()"
+     role="grid">
     @ChildContent
+    @if (Overlay is not null)
+    {
+        @Overlay
+    }
 </div>
 
 @code {
     [CascadingParameter] public GridState<T> State { get; set; } = null!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
+    /// <summary>Optional overlay content rendered on top of the grid viewport (e.g., cell selection overlay).</summary>
+    [Parameter] public RenderFragment? Overlay { get; set; }
+
     private string GetContainerStyle()
     {
         var totalWidth = State.TotalContentWidth;
         var totalHeight = State.TotalContentHeight + State.TotalHeaderHeight;
-        return $"position:relative;min-width:{totalWidth}px;min-height:{totalHeight}px;";
+
+        var style = $"position:relative;min-width:{totalWidth}px;min-height:{totalHeight}px;";
+
+        // Apply initial dimensions if set (useful for SSR)
+        if (State.ViewportInitialWidth.HasValue)
+            style += $"width:{State.ViewportInitialWidth.Value}px;";
+        if (State.ViewportInitialHeight.HasValue)
+            style += $"height:{State.ViewportInitialHeight.Value}px;";
+
+        return style;
     }
 }

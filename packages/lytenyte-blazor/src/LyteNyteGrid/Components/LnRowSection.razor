@@ -16,13 +16,17 @@
         <LnRow T="T"
                Row="row"
                RowIndex="absIndex"
-               IsAlternate="@(State.RowAlternate && absIndex % 2 == 1)" />
+               IsAlternate="@IsRowAlternate(row, absIndex)"
+               DetailTemplate="DetailTemplate"
+               FullWidthTemplate="FullWidthTemplate" />
     }
 </div>
 
 @code {
     [CascadingParameter] public GridState<T> State { get; set; } = null!;
     [Parameter] public Enums.RowPin Section { get; set; }
+    [Parameter] public RenderFragment<RowDetailContext<T>>? DetailTemplate { get; set; }
+    [Parameter] public RenderFragment<RowEventContext<T>>? FullWidthTemplate { get; set; }
 
     private GridDataSource<T> DS => State.DataSource;
 
@@ -32,6 +36,17 @@
         Enums.RowPin.Bottom => "bottom",
         _ => "center"
     };
+
+    private bool IsRowAlternate(RowNode row, int absIndex)
+    {
+        return State.RowAlternate switch
+        {
+            Enums.RowAlternateMode.None => false,
+            Enums.RowAlternateMode.Enabled => absIndex % 2 == 1,
+            Enums.RowAlternateMode.Root => row is RowGroup g ? g.Depth == 0 && absIndex % 2 == 1 : absIndex % 2 == 1,
+            _ => false,
+        };
+    }
 
     private IReadOnlyList<RowNode> GetRows()
     {

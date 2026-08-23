@@ -1,0 +1,154 @@
+@namespace LyteNyteGrid.Components
+@typeparam T
+
+<div class="ln-keyboard-handler"
+     tabindex="0"
+     @onkeydown="HandleKeyDown"
+     @onkeydown:preventDefault="ShouldPreventDefault"
+     @onkeydown:stopPropagation="true"
+     style="outline:none;">
+    @ChildContent
+</div>
+
+@code {
+    [CascadingParameter] public GridState<T> State { get; set; } = null!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool ShouldPreventDefault { get; set; }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        ShouldPreventDefault = false;
+
+        var isEditing = State.ActiveEdit is not null;
+
+        // When editing, only handle Escape (cancel) and Tab (next cell)
+        if (isEditing)
+        {
+            switch (e.Key)
+            {
+                case "Escape":
+                    State.EditEnd(cancel: true);
+                    ShouldPreventDefault = true;
+                    break;
+                case "Tab":
+                    State.EditEnd(cancel: false);
+                    // Move to next/previous cell
+                    if (e.ShiftKey)
+                        State.MoveFocus(0, -1);
+                    else
+                        State.MoveFocus(0, 1);
+                    ShouldPreventDefault = true;
+                    break;
+                case "Enter":
+                    State.EditEnd(cancel: false);
+                    // Move down to next row
+                    State.MoveFocus(1, 0);
+                    ShouldPreventDefault = true;
+                    break;
+            }
+            return;
+        }
+
+        // Navigation mode
+        switch (e.Key)
+        {
+            case "ArrowUp":
+                State.MoveFocus(-1, 0);
+                ShouldPreventDefault = true;
+                break;
+
+            case "ArrowDown":
+                State.MoveFocus(1, 0);
+                ShouldPreventDefault = true;
+                break;
+
+            case "ArrowLeft":
+                State.MoveFocus(0, State.Rtl ? 1 : -1);
+                ShouldPreventDefault = true;
+                break;
+
+            case "ArrowRight":
+                State.MoveFocus(0, State.Rtl ? -1 : 1);
+                ShouldPreventDefault = true;
+                break;
+
+            case "Home":
+                if (e.CtrlKey)
+                    State.FocusFirstRow();
+                else
+                    State.FocusFirstColumn();
+                ShouldPreventDefault = true;
+                break;
+
+            case "End":
+                if (e.CtrlKey)
+                    State.FocusLastRow();
+                else
+                    State.FocusLastColumn();
+                ShouldPreventDefault = true;
+                break;
+
+            case "PageUp":
+                // Move up by a page (approximately viewport height / row height rows)
+                var pageUpRows = State.ViewportHeight > 0 && State.RowHeight > 0
+                    ? Math.Max(1, State.ViewportHeight / State.RowHeight)
+                    : 10;
+                State.MoveFocus(-pageUpRows, 0);
+                ShouldPreventDefault = true;
+                break;
+
+            case "PageDown":
+                // Move down by a page
+                var pageDownRows = State.ViewportHeight > 0 && State.RowHeight > 0
+                    ? Math.Max(1, State.ViewportHeight / State.RowHeight)
+                    : 10;
+                State.MoveFocus(pageDownRows, 0);
+                ShouldPreventDefault = true;
+                break;
+
+            case "Enter":
+            case "F2":
+                // Begin editing the focused cell
+                if (State.FocusedCell is { } focused && State.EditMode != Enums.EditMode.ReadOnly)
+                {
+                    var column = State.ColumnByIndex(focused.ColIndex);
+                    if (column is not null)
+                    {
+                        State.EditBegin(column.Id, focused.RowIndex);
+                    }
+                }
+                ShouldPreventDefault = true;
+                break;
+
+            case "Escape":
+                // Clear focus
+                State.FocusedCell = null;
+                State.NotifyStateChanged();
+                ShouldPreventDefault = true;
+                break;
+
+            case " ":
+                // Toggle selection of focused row
+                if (State.FocusedCell is { } selFocused && State.SelectionMode != Enums.RowSelectionMode.None)
+                {
+                    var focusedRow = State.RowByIndex(selFocused.RowIndex);
+                    if (focusedRow is not null)
+                    {
+                        State.RowSelect(focusedRow.Id);
+                    }
+                }
+                ShouldPreventDefault = true;
+                break;
+
+            case "Tab":
+                // Move to next/previous cell
+                if (e.ShiftKey)
+                    State.MoveFocus(0, -1);
+                else
+                    State.MoveFocus(0, 1);
+                ShouldPreventDefault = true;
+                break;
+        }
+    }
+}

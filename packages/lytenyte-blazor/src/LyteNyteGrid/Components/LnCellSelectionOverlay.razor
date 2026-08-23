@@ -1,0 +1,27 @@
+@namespace LyteNyteGrid.Components
+@typeparam T
+
+@if (State.CellSelectionMode != Enums.CellSelectionMode.None && State.CellSelections.Count > 0)
+{
+    <div class="ln-cell-selection-overlay" style="position:absolute;top:0;left:0;pointer-events:none;z-index:3;">
+        @foreach (var rect in State.CellSelections)
+        {
+            var style = GetRectStyle(rect);
+            <div class="ln-cell-selection-rect" style="@style"></div>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter] public GridState<T> State { get; set; } = null!;
+
+    private string GetRectStyle(CellSelectionRect rect)
+    {
+        var x1 = rect.ColStart < State.XPositions.Length ? State.XPositions[rect.ColStart] : 0;
+        var x2 = rect.ColEnd + 1 < State.XPositions.Length ? State.XPositions[rect.ColEnd + 1] : State.TotalContentWidth;
+        var y1 = rect.RowStart < State.YPositions.Length ? State.YPositions[rect.RowStart] : 0;
+        var y2 = rect.RowEnd + 1 < State.YPositions.Length ? State.YPositions[rect.RowEnd + 1] : State.TotalContentHeight;
+
+        return $"position:absolute;left:{x1}px;top:{y1 + State.TotalHeaderHeight}px;width:{x2 - x1}px;height:{y2 - y1}px;background:rgba(51,154,240,0.15);border:1px solid rgba(51,154,240,0.5);";
+    }
+}

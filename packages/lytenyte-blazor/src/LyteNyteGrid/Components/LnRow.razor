@@ -1,25 +1,50 @@
 @namespace LyteNyteGrid.Components
 @typeparam T
 
-<div class="ln-row @GetRowClass() @(State.Styles?.Row?.ClassName)"
-     style="@GetRowStyle()"
-     role="row"
-     data-row-index="@RowIndex"
-     @onclick="HandleRowClick"
-     @ondblclick="HandleRowDoubleClick">
+@{
+    var isFullWidth = State.IsFullWidthRow(RowIndex);
+}
 
-    @foreach (var col in State.View.VisibleColumns)
-    {
-        var column = col;
-        var colIndex = State.View.ColumnIdToIndex[column.Id];
+@if (isFullWidth && FullWidthTemplate is not null)
+{
+    <div class="ln-row ln-row-full-width @GetRowClass() @(State.Styles?.Row?.ClassName)"
+         style="@GetFullWidthRowStyle()"
+         role="row"
+         data-row-index="@RowIndex"
+         data-ln-row-id="@Row.Id"
+         @onclick="HandleRowClick"
+         @ondblclick="HandleRowDoubleClick">
+        @FullWidthTemplate(new RowEventContext<T>
+        {
+            Row = Row,
+            RowIndex = RowIndex,
+            Api = State
+        })
+    </div>
+}
+else
+{
+    <div class="ln-row @GetRowClass() @(State.Styles?.Row?.ClassName)"
+         style="@GetRowStyle()"
+         role="row"
+         data-row-index="@RowIndex"
+         data-ln-row-id="@Row.Id"
+         @onclick="HandleRowClick"
+         @ondblclick="HandleRowDoubleClick">
 
-        <LnCell T="T"
-                Row="Row"
-                Column="column"
-                RowIndex="RowIndex"
-                ColIndex="colIndex" />
-    }
-</div>
+        @foreach (var col in State.View.VisibleColumns)
+        {
+            var column = col;
+            var colIndex = State.View.ColumnIdToIndex[column.Id];
+
+            <LnCell T="T"
+                    Row="Row"
+                    Column="column"
+                    RowIndex="RowIndex"
+                    ColIndex="colIndex" />
+        }
+    </div>
+}
 
 @if (State.DetailExpansions.Contains(Row.Id))
 {
@@ -43,6 +68,7 @@
     [Parameter] public int RowIndex { get; set; }
     [Parameter] public bool IsAlternate { get; set; }
     [Parameter] public RenderFragment<RowDetailContext<T>>? DetailTemplate { get; set; }
+    [Parameter] public RenderFragment<RowEventContext<T>>? FullWidthTemplate { get; set; }
 
     private string GetRowClass()
     {
@@ -60,7 +86,21 @@
             ? State.YPositions[RowIndex + 1] - State.YPositions[RowIndex]
             : State.RowHeight;
 
-        var style = $"display:grid;grid-template-columns:{GetGridTemplateColumns()};height:{height}px;";
+        var animStyle = GetAnimationStyle();
+        var style = $"display:grid;grid-template-columns:{GetGridTemplateColumns()};height:{height}px;{animStyle}";
+        if (State.Styles?.Row?.Style is not null)
+            style += State.Styles.Row.Style;
+        return style;
+    }
+
+    private string GetFullWidthRowStyle()
+    {
+        var height = RowIndex < State.YPositions.Length - 1
+            ? State.YPositions[RowIndex + 1] - State.YPositions[RowIndex]
+            : State.RowHeight;
+
+        var animStyle = GetAnimationStyle();
+        var style = $"height:{height}px;{animStyle}";
         if (State.Styles?.Row?.Style is not null)
             style += State.Styles.Row.Style;
         return style;
@@ -73,6 +113,13 @@
         if (State.Styles?.Detail?.Style is not null)
             style += State.Styles.Detail.Style;
         return style;
+    }
+
+    private string GetAnimationStyle()
+    {
+        if (State.RowAnimate is { Enabled: true } anim)
+            return $"transition:transform {anim.DurationMs}ms {anim.Easing}, opacity {anim.DurationMs}ms {anim.Easing};";
+        return "";
     }
 
     private string GetGridTemplateColumns()

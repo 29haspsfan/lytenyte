@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using LyteNyteGrid.Enums;
 using LyteNyteGrid.Models;
 
@@ -27,7 +28,13 @@ public class GridDataSource<T>
     private bool _rowGroupDefaultExpansion = true;
 
     private Func<T, string>? _leafIdFn;
-    private int _leafIdCounter;
+
+    // Cached leaf IDs keyed by data item reference to avoid counter drift across refreshes.
+    private readonly Dictionary<int, string> _leafIdCache = new();
+    private int _leafIdNextId;
+
+    // Lookup: row ID -> index in _flattenedRows (rebuilt on each Refresh)
+    private Dictionary<string, int> _rowIdToIndex = new();
 
     public event Action? DataChanged;
 
@@ -131,7 +138,9 @@ public class GridDataSource<T>
 
     public RowNode? RowById(string id)
     {
-        return _flattenedRows.FirstOrDefault(r => r.Id == id);
+        if (_rowIdToIndex.TryGetValue(id, out var index))
+            return _flattenedRows[index];
+        return null;
     }
 
     public bool IsGroupExpanded(string groupId)
@@ -144,6 +153,142 @@ public class GridDataSource<T>
         var current = IsGroupExpanded(groupId);
         _rowGroupExpansions[groupId] = state ?? !current;
         Refresh();
+    }
+
+    // ---- Navigation methods ----
+
+    /// <summary>
+    /// Returns the IDs of sibling rows (rows at the same level sharing the same parent group).
+    /// For ungrouped rows, all center rows are siblings.
+    /// </summary>
+    public IReadOnlyList<string> RowSiblings(string id)
+    {
+        var row = RowById(id);
+        if (row is null) return [];
+
+        // If this is a leaf in a group, find the parent group and return all immediate children
+        if (row is RowLeaf)
+        {
+            var parentGroup = FindParentGroup(id);
+            if (parentGroup is null)
+            {
+                // Ungrouped: all center leaf rows are siblings
+                return _centerRows.Where(r => r is RowLeaf).Select(r => r.Id).ToList();
+            }
+            return GetImmediateChildren(parentGroup.Id);
+        }
+
+        // If this is a group, return sibling groups at the same depth
+        if (row is RowGroup group)
+        {
+            return _flattenedRows
+                .OfType<RowGroup>()
+                .Where(g => g.Depth == group.Depth)
+                .Select(g => g.Id)
+                .ToList();
+        }
+
+        return [];
+    }
+
+    /// <summary>
+    /// Returns the IDs of all ancestor group rows for the given row, from outermost to innermost.
+    /// </summary>
+    public IReadOnlyList<string> RowParents(string id)
+    {
+        var parents = new List<string>();
+        if (!_rowIdToIndex.TryGetValue(id, out var idx)) return parents;
+
+        var row = _flattenedRows[idx];
+        int targetDepth = row is RowGroup g ? g.Depth : int.MaxValue;
+
+        // Walk backwards to find parent groups
+        for (int i = idx - 1; i >= 0; i--)
+        {
+            if (_flattenedRows[i] is RowGroup pg)
+            {
+                if (row is RowGroup && pg.Depth < targetDepth)
+                {
+                    parents.Insert(0, pg.Id);
+                    targetDepth = pg.Depth;
+                }
+                else if (row is RowLeaf)
+                {
+                    // First group we find walking backwards is the immediate parent
+                    parents.Insert(0, pg.Id);
+                    targetDepth = pg.Depth;
+                    row = pg; // now find parents of this group
+                }
+            }
+        }
+        return parents;
+    }
+
+    /// <summary>
+    /// Returns the IDs of immediate child rows for a group row.
+    /// For leaf rows, returns empty.
+    /// </summary>
+    public IReadOnlyList<string> RowChildren(string id)
+    {
+        return GetImmediateChildren(id);
+    }
+
+    /// <summary>
+    /// Returns all leaf descendant IDs for a group row.
+    /// </summary>
+    public IReadOnlyList<string> RowLeafs(string groupId)
+    {
+        if (!_rowIdToIndex.TryGetValue(groupId, out var idx)) return [];
+        if (_flattenedRows[idx] is not RowGroup group) return [];
+
+        var leafs = new List<string>();
+        for (int i = idx + 1; i < _flattenedRows.Count; i++)
+        {
+            var r = _flattenedRows[i];
+            if (r is RowGroup g && g.Depth <= group.Depth)
+                break; // exited the group's scope
+
+            if (r is RowLeaf)
+                leafs.Add(r.Id);
+        }
+        return leafs;
+    }
+
+    /// <summary>
+    /// Returns all row IDs between two rows (inclusive), in display order.
+    /// </summary>
+    public IReadOnlyList<string> RowsBetween(string startId, string endId)
+    {
+        if (!_rowIdToIndex.TryGetValue(startId, out var startIdx)) return [];
+        if (!_rowIdToIndex.TryGetValue(endId, out var endIdx)) return [];
+
+        if (startIdx > endIdx)
+            (startIdx, endIdx) = (endIdx, startIdx);
+
+        var result = new List<string>(endIdx - startIdx + 1);
+        for (int i = startIdx; i <= endIdx; i++)
+        {
+            result.Add(_flattenedRows[i].Id);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Converts a display row index to its row ID, or null if out of range.
+    /// </summary>
+    public string? RowIndexToRowId(int index)
+    {
+        if (index < 0 || index >= _flattenedRows.Count)
+            return null;
+        return _flattenedRows[index].Id;
+    }
+
+    /// <summary>
+    /// Converts a row ID to its display index, or -1 if not found.
+    /// </summary>
+    public int RowIdToRowIndex(string id)
+    {
+        return _rowIdToIndex.TryGetValue(id, out var idx) ? idx : -1;
     }
 
     /// <summary>
@@ -180,6 +325,13 @@ public class GridDataSource<T>
         _flattenedRows.AddRange(_centerRows);
         _flattenedRows.AddRange(_bottomRows);
 
+        // Rebuild the ID-to-index lookup
+        _rowIdToIndex = new Dictionary<string, int>(_flattenedRows.Count);
+        for (int i = 0; i < _flattenedRows.Count; i++)
+        {
+            _rowIdToIndex[_flattenedRows[i].Id] = i;
+        }
+
         DataChanged?.Invoke();
     }
 
@@ -197,9 +349,70 @@ public class GridDataSource<T>
         if (_leafIdFn is not null)
             return _leafIdFn(data);
 
-        // Fallback: use index-based ID
-        return $"row-{_leafIdCounter++}";
+        // Use the data item's identity hash code to produce stable IDs across refreshes.
+        var key = RuntimeHelpers.GetHashCode(data!);
+        if (!_leafIdCache.TryGetValue(key, out var id))
+        {
+            id = $"row-{_leafIdNextId++}";
+            _leafIdCache[key] = id;
+        }
+        return id;
     }
+
+    // ---- Private helpers for navigation ----
+
+    private RowGroup? FindParentGroup(string childId)
+    {
+        if (!_rowIdToIndex.TryGetValue(childId, out var idx)) return null;
+
+        for (int i = idx - 1; i >= 0; i--)
+        {
+            if (_flattenedRows[i] is RowGroup g)
+                return g;
+        }
+        return null;
+    }
+
+    private List<string> GetImmediateChildren(string groupId)
+    {
+        if (!_rowIdToIndex.TryGetValue(groupId, out var idx)) return [];
+        if (_flattenedRows[idx] is not RowGroup parentGroup) return [];
+
+        var children = new List<string>();
+        for (int i = idx + 1; i < _flattenedRows.Count; i++)
+        {
+            var r = _flattenedRows[i];
+            if (r is RowGroup g)
+            {
+                if (g.Depth <= parentGroup.Depth)
+                    break; // exited the parent group's scope
+                if (g.Depth == parentGroup.Depth + 1)
+                    children.Add(g.Id);
+            }
+            else if (r is RowLeaf)
+            {
+                // A leaf immediately under this group (no deeper sub-group above it)
+                // Check that no intermediate group of depth > parentGroup.Depth exists between
+                // the parent and this leaf that would make this leaf belong to a deeper group.
+                bool belongsToDeeper = false;
+                for (int j = i - 1; j > idx; j--)
+                {
+                    if (_flattenedRows[j] is RowGroup between && between.Depth > parentGroup.Depth)
+                    {
+                        belongsToDeeper = true;
+                        break;
+                    }
+                    if (_flattenedRows[j] is RowGroup b2 && b2.Depth <= parentGroup.Depth)
+                        break;
+                }
+                if (!belongsToDeeper)
+                    children.Add(r.Id);
+            }
+        }
+        return children;
+    }
+
+    // ---- Filter / sort / group pipeline ----
 
     private List<RowLeaf<T>> ApplyFilters(List<RowLeaf<T>> nodes)
     {
