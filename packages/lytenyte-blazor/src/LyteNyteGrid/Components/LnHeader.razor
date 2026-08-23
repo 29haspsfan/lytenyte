@@ -89,7 +89,7 @@
                     {
                         @column.FloatingCellTemplate(new CellRendererContext<T>
                         {
-                            Row = null!,
+                            Row = FloatingRowSentinel,
                             Column = column,
                             RowIndex = -1,
                             ColIndex = colIndex,
@@ -107,6 +107,8 @@
 
 @code {
     [CascadingParameter] public GridState<T> State { get; set; } = null!;
+
+    private static readonly RowLeaf FloatingRowSentinel = new() { Id = "__floating__" };
 
     private string GetHeaderStyle()
     {
@@ -150,8 +152,8 @@
             style += "position:sticky;z-index:1;";
         if (column.Pin == Enums.ColumnPin.Start && colIndex < State.XPositions.Length)
             style += $"{(State.Rtl ? "right" : "left")}:{State.XPositions[colIndex]}px;";
-        if (State.Styles?.Cell?.Style is not null)
-            style += State.Styles.Cell.Style;
+        if (State.Styles?.Header?.Style is not null)
+            style += State.Styles.Header.Style;
         return style;
     }
 
@@ -193,7 +195,6 @@
             _ => null
         };
 
-        // Rebuild sort dimensions from column states
         var sorts = State.Columns
             .Where(c => c.Sort.HasValue)
             .OrderBy(c => c.SortIndex ?? int.MaxValue)
@@ -205,8 +206,11 @@
             })
             .ToList();
 
-        var ds = State is GridState<T> gs ? gs : null;
-        // Trigger data source refresh via the parent
+        if (State is GridState<T> gs)
+        {
+            gs.DataSource.SetSort(sorts);
+            gs.RecomputeLayout();
+        }
         State.NotifyStateChanged();
     }
 

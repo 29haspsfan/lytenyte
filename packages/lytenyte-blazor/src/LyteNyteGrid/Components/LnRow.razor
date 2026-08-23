@@ -108,7 +108,7 @@ else
 
     private string GetDetailStyle()
     {
-        var height = State.DetailRowHeight;
+        var height = State.RowDetailHeight(Row.Id);
         var style = $"height:{height}px;overflow:auto;";
         if (State.Styles?.Detail?.Style is not null)
             style += State.Styles.Detail.Style;
