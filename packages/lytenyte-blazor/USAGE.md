@@ -4,21 +4,64 @@ A high-performance Blazor data grid component — pure C# with **zero JavaScript
 
 This is a port of the LyteNyte React Grid, rebuilt from the ground up for Blazor .NET 10.
 
-## Quick Start
+## Installation
 
-### 1. Add the package reference
+### Option A: Project Reference (recommended)
+
+Copy the `LyteNyteGrid/` folder into your solution (e.g. `src/LyteNyteGrid/`), then add a project reference in your Blazor app's `.csproj`:
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="..\LyteNyteGrid\LyteNyteGrid.csproj" />
+</ItemGroup>
+```
+
+### Option B: Local NuGet Package
+
+Pack the library and consume it as a local NuGet package:
+
+```bash
+cd path/to/LyteNyteGrid
+dotnet pack -o ./nupkg
+```
+
+Add a local source in your `nuget.config`:
+
+```xml
+<configuration>
+  <packageSources>
+    <add key="local" value="path/to/LyteNyteGrid/nupkg" />
+  </packageSources>
+</configuration>
+```
+
+Then reference it normally:
 
 ```xml
 <PackageReference Include="LyteNyteGrid" Version="1.0.0" />
 ```
 
-### 2. Add the CSS
+### Target Framework
+
+The project targets `net10.0`. To use it with .NET 8 or .NET 9, update the `LyteNyteGrid.csproj`:
+
+```xml
+<!-- Change this: -->
+<TargetFramework>net9.0</TargetFramework>
+
+<!-- And update the dependency version: -->
+<PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.0" />
+```
+
+### Add the CSS
 
 In your `App.razor` or `_Host.cshtml`:
 
 ```html
 <link href="_content/LyteNyteGrid/css/lytenyte-grid.css" rel="stylesheet" />
 ```
+
+## Quick Start
 
 ### 3. Basic Usage
 
@@ -42,10 +85,10 @@ In your `App.razor` or `_Host.cshtml`:
 
     private List<ColumnDefinition<Person>> columns = new()
     {
-        new() { Id = "id", HeaderName = "ID", FieldName = "Id", Width = 80, Pin = ColumnPin.Start },
-        new() { Id = "name", HeaderName = "Name", FieldName = "Name", Width = 200 },
-        new() { Id = "salary", HeaderName = "Salary", FieldName = "Salary", Width = 150 },
-        new() { Id = "dept", HeaderName = "Department", FieldName = "Department", Width = 180 },
+        new() { Id = "id", Name = "ID", FieldName = "Id", Width = 80, Pin = ColumnPin.Start },
+        new() { Id = "name", Name = "Name", FieldName = "Name", Width = 200 },
+        new() { Id = "salary", Name = "Salary", FieldName = "Salary", Width = 150 },
+        new() { Id = "dept", Name = "Department", FieldName = "Department", Width = 180 },
     };
 
     record Person(int Id, string Name, decimal Salary, string Department);
@@ -92,14 +135,14 @@ In your `App.razor` or `_Host.cshtml`:
         new()
         {
             Id = "name",
-            HeaderName = "Name",
+            Name = "Name",
             FieldName = "Name",
             CellTemplate = context => @<span style="font-weight:bold">@context.Value</span>
         },
         new()
         {
             Id = "salary",
-            HeaderName = "Salary",
+            Name = "Salary",
             FieldName = "Salary",
             CellTemplate = context => @<span style="color:green">$@context.Value</span>
         }
@@ -119,13 +162,141 @@ In your `App.razor` or `_Host.cshtml`:
 @code {
     private List<ColumnDefinition<Person>> editableColumns = new()
     {
-        new() { Id = "name", HeaderName = "Name", FieldName = "Name", Editable = true },
-        new() { Id = "salary", HeaderName = "Salary", FieldName = "Salary", Editable = true },
+        new() { Id = "name", Name = "Name", FieldName = "Name", Editable = true },
+        new() { Id = "salary", Name = "Salary", FieldName = "Salary", Editable = true },
     };
 }
 ```
 
-### 7. Dark Theme
+### 7. Cell Selection
+
+```razor
+<LnGrid T="Person"
+        Data="people"
+        Columns="columns"
+        CellSelectionMode="CellSelectionMode.MultiRange"
+        OnCellSelectionChange="HandleCellSelectionChange" />
+
+@code {
+    private void HandleCellSelectionChange(List<CellSelectionRect> selections)
+    {
+        foreach (var rect in selections)
+        {
+            Console.WriteLine($"Selected rows {rect.RowStart}-{rect.RowEnd}, cols {rect.ColStart}-{rect.ColEnd}");
+        }
+    }
+}
+```
+
+### 8. Full-Width Rows
+
+```razor
+<LnGrid T="Person"
+        Data="people"
+        Columns="columns"
+        RowFullWidthPredicate="ctx => ctx.Row is RowGroup"
+        RowFullWidthTemplate="RenderFullWidth" />
+
+@code {
+    private RenderFragment<RowEventContext<Person>> RenderFullWidth =>
+        context => @<div style="padding:12px;font-weight:bold;">
+            Group: @((context.Row as RowGroup)?.Key)
+        </div>;
+}
+```
+
+### 9. Detail / Master-Detail Rows
+
+```razor
+<LnGrid T="Person"
+        Data="people"
+        Columns="columns"
+        RowDetailHeight="150"
+        RowDetailTemplate="RenderDetail" />
+
+@code {
+    private RenderFragment<RowDetailContext<Person>> RenderDetail =>
+        context => @<div style="padding:16px;">
+            Detail for row @context.Row.Id
+        </div>;
+}
+```
+
+### 10. Floating Summary Row
+
+```razor
+@{
+    var columnsWithFloating = new List<ColumnDefinition<Person>>
+    {
+        new()
+        {
+            Id = "name", Name = "Name", FieldName = "Name",
+            FloatingCellTemplate = ctx => @<span style="font-weight:600">Total</span>
+        },
+        new()
+        {
+            Id = "salary", Name = "Salary", FieldName = "Salary",
+            FloatingCellTemplate = ctx => @<span>@ComputeTotal()</span>
+        }
+    };
+}
+
+<LnGrid T="Person"
+        Data="people"
+        Columns="columnsWithFloating"
+        FloatingRowEnabled="true"
+        FloatingRowHeight="36" />
+```
+
+### 11. Row Animations
+
+```razor
+<LnGrid T="Person"
+        Data="people"
+        Columns="columns"
+        RowAnimate="new AnimationSettings { Enabled = true, DurationMs = 200, Easing = \"ease-in-out\" }" />
+```
+
+### 12. Keyboard Navigation
+
+Keyboard navigation is built in. When the grid has focus:
+
+| Key | Action |
+|-----|--------|
+| Arrow keys | Move cell focus |
+| Home / End | First / last column |
+| Ctrl+Home / Ctrl+End | First / last row |
+| PageUp / PageDown | Scroll by page |
+| Enter / F2 | Begin editing focused cell |
+| Escape | Cancel edit or clear focus |
+| Tab / Shift+Tab | Next / previous cell |
+| Space | Toggle row selection |
+
+### 13. Programmatic API
+
+Access the grid API through the `State` property on `LnGrid`:
+
+```razor
+<LnGrid @ref="grid" T="Person" Data="people" Columns="columns" />
+
+<button @onclick="ScrollToTop">Scroll to Top</button>
+<button @onclick="AutosizeAll">Autosize Columns</button>
+<button @onclick="ExportAll">Export Data</button>
+
+@code {
+    private LnGrid<Person> grid = null!;
+
+    private void ScrollToTop() => grid.State.ScrollToRow(0);
+    private void AutosizeAll() => grid.State.ColumnAutosize();
+    private void ExportAll()
+    {
+        var result = grid.State.ExportDataFull();
+        // result.Headers, result.Data, result.Columns, result.GroupHeaders
+    }
+}
+```
+
+### 14. Dark Theme
 
 ```html
 <div class="ln-dark">
